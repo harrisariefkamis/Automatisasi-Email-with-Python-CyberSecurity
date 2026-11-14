@@ -12,6 +12,22 @@ Aplikasi demo lokal berbasis Python untuk membantu meninjau email dan mengenali 
 - Menyediakan antarmuka demo dengan Streamlit serta antarmuka command line yang menghasilkan JSON.
 - Menyertakan chat demo berbasis aturan lokal; chat ini bukan model AI dan tidak memakai layanan AI eksternal.
 
+## Struktur Proyek
+
+```text
+.
+├── app.py                       # Antarmuka web demo menggunakan Streamlit
+├── pyproject.toml               # Konfigurasi proyek, dependensi, dan perintah CLI
+├── src/
+│   └── email_assistant/
+│       ├── __init__.py          # Inisialisasi package
+│       ├── chat.py              # Respons chat demo berbasis aturan lokal
+│       ├── cli.py               # Antarmuka command line untuk input JSON
+│       └── core.py              # Logika triase dan analisis email
+└── tests/
+    └── test_core.py             # Pengujian untuk logika triase email
+```
+
 ## Persyaratan
 
 - Python 3.11 atau lebih baru

@@ -1,7 +1,5 @@
 """Streamlit demo. Only analyzes text entered by the user; no mailbox access."""
 
-import json
-
 import streamlit as st
 
 from email_assistant.chat import answer_question

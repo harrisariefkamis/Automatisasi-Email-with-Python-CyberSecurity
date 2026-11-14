@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "email-job-assistant"
+version = "0.1.0"
+description = "Privacy-conscious email job triage starter"
+requires-python = ">=3.11"
+dependencies = ["streamlit>=1.40"]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.8"]
+
+[project.scripts]
+email-assistant = "email_assistant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

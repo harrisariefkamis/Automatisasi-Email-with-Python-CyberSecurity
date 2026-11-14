@@ -1,7 +1,7 @@
 """Rule-based email triage demo. Does not connect to or modify an email account."""
 
-from dataclasses import asdict, dataclass
 import re
+from dataclasses import asdict, dataclass
 from typing import Any
 
 JOB_TERMS = (

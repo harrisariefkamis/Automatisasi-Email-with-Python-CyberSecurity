@@ -1,59 +1,72 @@
-# Deployment Plan
+# Rencana Deployment: Streamlit + Supabase + Gmail OAuth
 
-## Architecture decisions
+## Keputusan arsitektur
 
-For the public website demo, use Streamlit Community Cloud for the UI, Supabase Auth for website login, and a separate Gmail OAuth flow with read-only scope. Keep all destructive email actions disabled until the security review is complete.
+Untuk prototipe website, gunakan **Streamlit Community Cloud untuk UI**, **Supabase Auth dan Postgres/RLS untuk akun/data**, **Google OAuth Gmail sebagai izin terpisah**, dan **AI opsional setelah consent eksplisit**. Gunakan Vercel hanya bila API backend dipisahkan kemudian; Vercel Functions bukan host Streamlit persisten.
 
-## Phase A: deploy Streamlit demo
+### Pemisahan izin
 
-1. Push the repo to GitHub.
-2. In Streamlit Community Cloud, connect the repository and choose `streamlit_app.py` as the app entry file.
-3. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in Streamlit secrets.
-4. Leave Gmail and AI services disabled until the OAuth and consent flows are implemented.
+- Login email/kata sandi membuat akun website melalui Supabase Auth.
+- Tombol “Hubungkan Gmail” nantinya memulai Google OAuth terpisah dengan scope Gmail baca-saja.
+- Consent AI terpisah; beri tahu pengguna bahwa email pilihan akan dikirim ke provider AI sebelum meminta persetujuan.
+- Jangan menganggap salah satu izin sebagai izin untuk yang lain.
 
-Example secrets:
+## Tahap A — deploy UI demo
+
+1. Push repo ke GitHub.
+2. Masuk ke Streamlit Community Cloud dan hubungkan GitHub.
+3. Buat app dari repo ini, branch `main`, file utama `streamlit_app.py`.
+4. Untuk login, tambahkan Supabase URL dan public anon key ke bagian Secrets aplikasi. Jangan gunakan service-role key.
+
+Contoh secrets TOML (isi hanya di pengaturan Streamlit, jangan commit):
 
 ```toml
 SUPABASE_URL = "https://your-project.supabase.co"
 SUPABASE_ANON_KEY = "your-public-anon-key"
 ```
 
-## Phase B: Gmail OAuth (separate from website login)
+UI mendukung signup, login, reset password, tabs workspace, dan triase teks lokal. Jika secrets Supabase belum ada, tombol auth nonaktif. Panel Gmail dan AI masih nonaktif karena alur OAuth/token per pengguna belum dibuat.
 
-1. Register an OAuth client in Google Cloud Console.
-2. Use a server-side authorization code flow with CSRF state validation.
-3. Request the minimum Gmail scope: `gmail.readonly`.
-4. Store user tokens in encrypted server-side storage mapped to the authenticated user ID.
-5. Never store Gmail tokens in Git, frontend state, or public logs.
-6. Keep all actions read-only in the MVP.
+## Tahap B — Gmail OAuth terpisah
 
-## Phase C: Supabase RLS and data storage
+Sebelum mengaktifkan tombol “Hubungkan Gmail”:
+1. Buat OAuth client di Google Cloud Console dan daftarkan redirect URI yang persis.
+2. Implementasikan authorization-code flow server-side dengan state anti-CSRF, redirect allowlist, validasi callback, user binding, revoke/disconnect, dan penanganan token kedaluwarsa.
+3. Minta hanya `https://www.googleapis.com/auth/gmail.readonly` untuk MVP.
+4. Simpan refresh token terenkripsi server-side per user; jangan simpan di `.env`, URL, browser, atau Git. Secrets platform untuk credential aplikasi bukan tempat menyimpan token pribadi semua pengguna.
+5. Panggil `GmailReadOnlyClient` dengan kredensial dari sesi tepercaya. Batasi pesan/body dan jangan fetch attachment atau buka URL otomatis.
+6. Normalisasikan email ke `EmailMessage` dan sambungkan ke `triage_message()`.
 
-1. Run the migration in `supabase/migrations/0001_emails.sql`.
-2. Use the authenticated user JWT so `auth.uid() = user_id` is enforced by RLS.
-3. Do not use the service-role key in the app.
-4. Keep email content minimal and consent-gated.
+## Tahap C — Supabase Postgres/RLS
 
-## Phase D: AI processing
+1. Jalankan `supabase/migrations/0001_emails.sql`.
+2. Gunakan JWT pengguna agar RLS menegakkan `auth.uid() = user_id`. Jangan gunakan service-role key pada request pengguna.
+3. Simpan metadata minimal; simpan body hanya bila diperlukan dan dengan persetujuan terpisah.
+4. Uji isolasi RLS dengan dua user, termasuk percobaan memalsukan `user_id`.
+5. Tetapkan retention, penghapusan, backup dan incident response sebelum data nyata disimpan.
 
-1. Add any AI provider key in platform-managed secrets only.
-2. Require explicit user consent before sending email content to an external model.
-3. Redact personal data, validate schema outputs, and fail safely to the deterministic rule-based triage.
-4. Treat email content as untrusted input and never let the model write to Gmail or the database.
+## Tahap D — AI opsional
 
-## Phase E: actions
+1. Simpan `OPENAI_API_KEY` hanya di secrets platform server-side.
+2. Jelaskan provider, data yang dikirim, tujuan dan retensi; dapatkan consent AI khusus sebelum memanggil adapter.
+3. Minimalkan/redaksi PII, batasi input, validasi schema, timeout/kuota, dan fallback ke triase rule-based.
+4. Perlakukan body sebagai data tidak tepercaya. Model tidak boleh punya tools Gmail/database atau menjalankan tindakan.
 
-For the MVP, do not support send, delete, move, label, or unsubscribe actions. If those features are added later, require explicit action confirmation, audit logs, and undo support.
+## Tahap E — tindakan email
 
-## Vercel note
+Untuk MVP, pertahankan read-only. Jangan aktifkan send/delete/move/label/unsubscribe. Tindakan masa depan memerlukan preview, konfirmasi per tindakan, otorisasi server, approval satu kali yang dipersistenkan, audit terlindungi, idempotency, batas batch, dan undo.
 
-Vercel can be used for API endpoints if a separate backend is introduced later, but it is not the right host for the main Streamlit UI.
+## Vercel
 
-## Security checklist before real inbox access
+`api/triage.py` adalah endpoint triase teks stateless, bukan website Streamlit. Vercel dapat dipakai bila backend dipisah menjadi API. Streamlit UI tetap berada di Streamlit Community Cloud atau hosting yang mendukung proses Streamlit persisten.
 
-- [ ] Website login works through Supabase Auth.
-- [ ] RLS blocks cross-user access.
-- [ ] Gmail OAuth hasState CSRF validation and secure token storage.
-- [ ] Consent for Gmail and AI is explicit and separate.
-- [ ] No secrets are committed to Git or exposed in logs.
-- [ ] Error handling covers malformed payloads and provider failures.
+## Checklist sebelum inbox nyata
+
+- [ ] Supabase Auth signup/login/reset password berjalan dan diuji.
+- [ ] RLS mencegah akses silang antar pengguna.
+- [ ] Gmail OAuth state/CSRF, redirect, token storage, revoke, dan scope read-only ditinjau.
+- [ ] Consent Gmail, persistence, dan AI terpisah dan dapat dicabut.
+- [ ] Secrets tidak muncul di source, client, URL, log, atau state yang tidak aman.
+- [ ] Uji prompt injection, payload malformed/oversize, provider failure, dan akses lintas akun.
+- [ ] Rate limit, logging redacted, privacy/retention policy, dan proses penghapusan tersedia.
+- [ ] Gmail write action tidak tersedia sebelum review keamanan dan approval flow lengkap.

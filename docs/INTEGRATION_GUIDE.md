@@ -1,52 +1,33 @@
-# Integrasi Gmail, Supabase, dan AI — batas keamanan
+# Panduan Integrasi Gmail, Supabase, dan AI — batas keamanan
 
-## Kondisi implementasi
+## Status implementasi
 
-Sudah tersedia komponen server-side untuk Gmail read-only, normalisasi model email, pemanggilan `core.triage_email()`, penyimpanan Supabase opsional berbasis user JWT/RLS, adapter OpenAI dengan consent dan schema validation, audit metadata, serta primitive approval. Namun integrasi **belum production-ready**: tidak ada OAuth web flow, session/authentication aplikasi, Supabase Auth wiring, consent UI, rate limiting aplikasi, durable audit store, atau Gmail write executor. Endpoint Vercel hanya triase teks stateless.
+Repo memiliki UI demo Streamlit di `streamlit_app.py`, Gmail read-only adapter, model internal `EmailMessage`, service yang memanggil `core.triage_email()`, Supabase repository dengan user JWT/RLS, adapter OpenAI dengan consent/schema validation, serta endpoint Vercel untuk triase teks. Namun login website, OAuth callback/session Gmail, token storage per-user, consent UI, dan koneksi komponen tersebut ke UI belum tersedia end-to-end.
 
-## Alur yang disarankan
+## Arsitektur prototipe yang direkomendasikan
 
-1. **Auth/consent aplikasi**: autentikasi pengguna dan sesi server. Consent untuk membaca Gmail, menyimpan email, dan mengirim teks ke AI harus terpisah, eksplisit, dapat dicabut, dan dicatat.
-2. **OAuth Google**: Authorization Code flow server-side; validasi `state`, redirect URI, issuer/audience; Gmail scope hanya `gmail.readonly`. Simpan refresh/access token terenkripsi server-side, sediakan revoke. Jangan menerima credential dari request body atau browser storage.
-3. **Fetch/read**: `GmailReadOnlyClient` membatasi 20 pesan terbaru, hanya menyediakan list/get, dan normalisasi body/header dengan batas panjang. Jangan membuka URL atau lampiran otomatis.
-4. **Triage**: panggil `triage_message(EmailMessage)` yang mendelegasikan ke `core.triage_email()`.
-5. **Supabase**: jalankan migration. Gunakan Supabase Auth JWT pengguna + anon key dari server. RLS memvalidasi `auth.uid() = user_id`. Jangan pernah gunakan service-role key di request path. `PERSIST_EMAIL_BODY=false` adalah default desain; repository menghilangkan body kecuali opsi `store_body=True` dan consent persistence diberikan. Terapkan retensi/penghapusan dan enkripsi sesuai kebutuhan.
-6. **AI**: OpenAI bersifat optional dan hanya dipanggil pada kategori job bila `external_processing_consent=True`. Redaksi email/telepon, batas ukuran, timeout, strict JSON schema/Pydantic validation, tanpa tools. Prompt injection diuji; rules tetap sumber fallback. Pastikan kebijakan provider dan disclosure data sesuai kebutuhan sebelum mengirim data.
-7. **Approval/audit**: audit event tidak berisi body, sender, prompt, token, atau secret. `ApprovalService` hanya mencatat proposal/approval dan tidak menjalankan tindakan. Approval saat ini belum one-time persisted; jangan jadikan sebagai authorization produksi.
-8. **Actions**: tidak ada API Gmail mutation. Jangan menambah send/delete/move/unsubscribe sebelum authenticated one-time approval, authorization check, idempotency, dry-run, audit durable, undo/rollback, dan review keamanan tersedia.
+- Streamlit Community Cloud: hosting UI Streamlit.
+- Supabase Auth: login website email/kata sandi dan manajemen akun.
+- Google OAuth Gmail: izin terpisah, dimulai read-only.
+- Supabase Postgres: data aplikasi dengan RLS per pengguna.
+- OpenAI: opsional, hanya untuk data yang dipilih pengguna setelah consent.
+- Vercel: hanya bila backend API dipisahkan kemudian; bukan untuk host Streamlit persisten.
 
-Contoh komposisi service (credentials dan identitas harus berasal dari auth layer tepercaya):
+Login ke website tidak memberi izin Gmail; persetujuan Gmail tidak berarti persetujuan AI.
 
-```python
-from email_assistant.integrations.gmail_client import GmailReadOnlyClient
-from email_assistant.services.email_triage_service import triage_message
+Detail deployment dan tahapan implementasi ada di [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md).
 
-client = GmailReadOnlyClient(server_side_google_credentials)
-for normalized_email in client.list_recent(max_results=10):
-    result = triage_message(normalized_email)
-    # Persist only after separate, explicit user consent.
-```
+## Batas keamanan
 
-## Supabase setup
+1. Gunakan Gmail scope `gmail.readonly` untuk MVP.
+2. OAuth harus server-side dengan state/CSRF validation, exact redirect URI, sesi terautentikasi, token terenkripsi, revoke/disconnect. Jangan menerima Google token dari request body atau menyimpannya di Git/URL.
+3. Supabase memakai user JWT agar RLS berlaku. Jangan gunakan service-role key pada jalur request pengguna.
+4. Body email tidak disimpan default; persistence membutuhkan consent terpisah dan kebijakan retensi.
+5. OpenAI hanya dipanggil setelah consent AI eksplisit; minimalkan/redaksi PII dan validasi schema.
+6. Email adalah input tidak tepercaya. AI tidak mendapat tool akses Gmail/database dan tidak boleh memicu tindakan.
+7. Audit log tidak boleh merekam body email, token, prompt, atau kredensial.
+8. Tidak ada Gmail write action. Proposal approval bukan izin produksi dan tidak menjalankan tindakan.
 
-1. Buat project Supabase.
-2. Jalankan `supabase/migrations/0001_emails.sql` di Supabase SQL editor/migration workflow.
-3. Atur `SUPABASE_URL` dan anon key di server secret store. Gunakan access JWT pengguna pada repository; jangan memakai service role.
-4. Uji RLS dengan dua user: user A tidak boleh membaca/menulis record user B, termasuk lewat filter yang dimanipulasi.
-5. Tentukan retensi sebelum mengaktifkan body persistence. Body tidak disimpan secara default oleh repository.
+## Status deployment
 
-## Vercel deployment
-
-`vercel.json` mendefinisikan Python serverless API `api/triage.py`. Deploy dengan mengimpor GitHub repository ke Vercel atau menjalankan Vercel CLI di akun Anda; sesi Copilot ini tidak memiliki akses ke akun Vercel, jadi saya tidak dapat membuat deployment live atau mengatur secrets di dashboard.
-
-Set `API_ACCESS_TOKEN` di Vercel Environment Variables untuk Preview/Production, lalu deploy. Endpoint saat ini hanya menerima teks triase dengan bearer token dan batas request; ia **tidak** menggunakan Gmail/OpenAI/Supabase. Sebelum endpoint publik, aktifkan rate limit/WAF dan autentikasi per pengguna. Jangan masukkan bearer token di browser publik.
-
-## Sebelum mengaktifkan fitur nyata
-
-- [ ] OAuth flow, CSRF/state, server sessions, logout/revoke, encrypted token storage diuji.
-- [ ] Consent terpisah dan dapat dicabut untuk Gmail read, penyimpanan, dan AI.
-- [ ] Scope OAuth dan data minimization direview; lampiran/URL tidak di-fetch otomatis.
-- [ ] Supabase RLS diuji dengan akun berbeda dan service-role key tidak digunakan.
-- [ ] Prompt-injection, MIME/HTML malformed, input oversize, invalid schema, rate limits, timeouts, dan outage diuji.
-- [ ] Secret scanning, dependency checks, CI, rate limiting, deployment logs redaction, privacy/retention policy aktif.
-- [ ] Tindakan tulis tetap tidak tersedia sampai threat model dan approval flow durable ditinjau.
+Untuk deploy UI, pilih `streamlit_app.py` sebagai main file di Streamlit Community Cloud. Vercel endpoint `api/triage.py` hanya melakukan triase teks manual dan tidak menghubungkan Gmail, Supabase, atau OpenAI.

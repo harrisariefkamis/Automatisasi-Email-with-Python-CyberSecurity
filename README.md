@@ -1,6 +1,6 @@
 # Asisten Triase Email Lowongan
 
-Aplikasi demo lokal berbasis Python untuk membantu meninjau email dan mengenali kemungkinan email lowongan kerja, langganan, atau spam. Hasilnya berupa saran untuk ditinjau secara manual—bukan keputusan otomatis.
+Aplikasi lokal berbasis Python untuk membantu meninjau email dan mengenali kemungkinan email lowongan kerja, langganan, atau spam. Hasilnya berupa saran untuk ditinjau secara manual—bukan keputusan otomatis.
 
 > **Privasi dan keamanan:** Aplikasi ini tidak terhubung ke akun atau inbox email. Aplikasi hanya menganalisis teks yang Anda masukkan, dan tidak mengirim, menghapus, memblokir, atau melakukan unsubscribe terhadap email.
 

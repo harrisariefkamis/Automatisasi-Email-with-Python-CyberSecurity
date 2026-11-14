@@ -1,116 +1,43 @@
-# Asisten Triase Email Lowongan
+# Email Job Assistant
 
-Demo lokal berbasis Python untuk membantu meninjau email lowongan kerja, langganan, dan spam. Aplikasi menyediakan antarmuka Streamlit dan CLI. Hasil klasifikasi adalah petunjuk berbasis aturan yang perlu diperiksa manusia.
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
-> **Status:** prototipe lokal. Belum terhubung ke inbox, database, atau layanan AI. Demo hanya menganalisis teks yang dimasukkan pengguna dan tidak mengirim, menghapus, memindahkan, memblokir, atau melakukan unsubscribe terhadap email.
+Prototipe triase email yang menghubungkan Gmail **read-only**, aturan triase Python, penyimpanan Supabase opsional dengan RLS, dan analisis OpenAI opsional yang memerlukan consent eksplisit.
 
-## Yang tersedia
+> **Peringatan status:** Adapter Gmail dan AI tersedia sebagai komponen server-side, tetapi OAuth login/callback dan session management belum disediakan. Endpoint Vercel hanya menerima teks untuk triase aturan; ia tidak menyinkronkan Gmail, menulis ke Supabase, atau memanggil OpenAI. Jangan aktifkan akses inbox/AI untuk pengguna sebelum OAuth, autentikasi, RLS, consent UI, rate limiting, dan review keamanan selesai.
 
-- Triase berbasis kata kunci untuk lowongan, langganan, spam, dan email umum.
-- Petunjuk analisis lowongan, termasuk kata kunci yang cocok dan URL yang terdeteksi.
-- UI lokal Streamlit, CLI JSON, dan chat demo berbasis aturan.
-- Pengujian unit untuk perilaku utama triase.
-
-## Teknologi
-
-Python 3.11+, Streamlit, setuptools, dan `unittest`.
-
-## Mulai cepat
+## Jalankan demo lokal
 
 ```bash
 python -m venv .venv
-```
-
-Aktifkan environment:
-
-```bash
-# macOS / Linux
-source .venv/bin/activate
-
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-```
-
-Pasang proyek dan jalankan aplikasi:
-
-```bash
-python -m pip install --upgrade pip
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 pip install -e .
 streamlit run app.py
 ```
 
-Streamlit akan menampilkan alamat lokal di terminal. Masukkan pengirim, subjek, dan isi email untuk melihat hasil triase.
+## Integrasi server-side
 
-## CLI
+1. Salin `.env.example` sebagai template lokal; aplikasi saat ini tidak memuat `.env` otomatis. Jangan commit secret.
+2. Implementasikan OAuth Authorization Code flow di server dengan Gmail scope read-only dan state/CSRF validation. Berikan OAuth credentials ke `GmailReadOnlyClient` dari session server yang terautentikasi; jangan menerima token dari body request.
+3. Normalisasi pesan ke `EmailMessage`, lalu panggil `triage_message()` untuk memakai fungsi `core.triage_email()` yang ada.
+4. Simpan email hanya bila pengguna menyetujui persistence. Jalankan SQL migration di `supabase/migrations/0001_emails.sql`; repository menggunakan anon key dan JWT pengguna agar RLS berlaku. Jangan gunakan service-role key.
+5. Panggil `OpenAIJobAssistant` hanya setelah consent terpisah untuk pemrosesan eksternal; hasil divalidasi dengan Pydantic. Isi email adalah input tidak tepercaya, bukan instruksi.
+6. Proposal approval dan audit hanya mencatat metadata. Belum ada Gmail write executor—tidak ada tindakan yang akan dijalankan.
 
-Buat file JSON, misalnya `email.json`:
+Detail, contoh pemakaian dan checklist keamanan: [Panduan Integrasi](docs/INTEGRATION_GUIDE.md).
 
-```json
-{
-  "from": "recruiter@example.com",
-  "subject": "Job opening: Python developer",
-  "body": "We are hiring. Apply at https://example.org/jobs",
-  "headers": {}
-}
-```
+## Deploy ke Vercel
 
-Jalankan:
+Repo berisi Python serverless function `api/triage.py` dan `vercel.json`. Endpoint `/api/triage` hanya melakukan triase teks stateless dengan bearer token `API_ACCESS_TOKEN`; bukan OAuth callback dan tidak mengakses Gmail, Supabase, atau OpenAI.
 
-```bash
-email-assistant email.json
-```
+Untuk deploy: import repository di Vercel, tambahkan `API_ACCESS_TOKEN` sebagai Environment Variable (gunakan nilai acak kuat), lalu deploy. Vercel CLI/dashboard harus dijalankan dengan akun pemilik; tidak ada kredensial deployment yang tersedia dari sesi ini. Lindungi endpoint dengan rate limiting/WAF sebelum dibuka publik. Hindari mengirim data pribadi ke endpoint yang belum memiliki user authentication.
 
-CLI mencetak hasil triase dalam JSON. `headers` opsional; header `List-Unsubscribe` dapat menjadi petunjuk langganan.
-
-## Pengujian
+## Uji
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-## Struktur repositori
+## Lisensi dan kontributor
 
-```text
-.
-├── app.py
-├── pyproject.toml
-├── .env.example                  # Template untuk konfigurasi masa depan; belum dibaca aplikasi
-├── src/email_assistant/
-│   ├── api/                      # Kerangka untuk lapisan API
-│   ├── agents/                   # Kerangka orkestrasi; belum ada agent AI
-│   ├── integrations/             # Kerangka adapter; belum terhubung ke provider
-│   ├── models/                   # Kerangka model domain
-│   ├── rules/                    # Kerangka aturan dan kebijakan
-│   ├── services/                 # Kerangka layanan aplikasi
-│   ├── storage/                  # Kerangka penyimpanan; belum memakai database
-│   ├── chat.py                   # Chat demo berbasis aturan
-│   ├── cli.py                    # CLI input JSON
-│   └── core.py                   # Logika triase saat ini
-└── tests/
-    └── test_core.py
-```
-
-Folder `api`, `agents`, `integrations`, `models`, `rules`, `services`, dan `storage` adalah kerangka package untuk membantu pengembangan bertahap; belum berisi fitur integrasi produksi. UI saat ini berada di `app.py`, belum dipecah menjadi frontend terpisah.
-
-## Konfigurasi environment
-
-`.env.example` mendokumentasikan opsi konfigurasi yang mungkin diperlukan kelak. Aplikasi saat ini **belum memuat file `.env` maupun membaca variabel tersebut**. Salin menjadi `.env` hanya saat implementasi konfigurasi tersedia, dan jangan commit nilai rahasia. Jangan masukkan kredensial nyata ke contoh atau issue.
-
-## Kekurangan dan langkah pengembangan
-
-- **Deteksi sederhana:** pencocokan kata kunci berpotensi salah dan belum dievaluasi pada dataset yang beragam. Tambahkan kasus uji, data evaluasi yang aman, dan dokumentasikan false positive/negative.
-- **Skor belum terkalibrasi:** confidence berasal dari aturan tetap, bukan probabilitas terukur.
-- **Tidak ada integrasi email:** belum tersedia OAuth, sinkronisasi, penyimpanan, autentikasi pengguna, maupun pengelolaan token. Jika ditambahkan, mulai dengan mode baca-saja dan izin minimum.
-- **Analisis lowongan tidak memverifikasi keaslian:** pengguna tetap harus memeriksa pengirim, perusahaan, domain, tautan, dan klaim secara mandiri.
-- **Chat bukan AI:** respons lokal berbasis aturan, tanpa model atau layanan AI.
-- **Belum siap produksi:** belum ada CI, logging operasional, deployment, kebijakan retensi data, atau dokumentasi threat/privacy yang lengkap.
-
-Urutan yang disarankan: perluas test dan CI; implementasikan konfigurasi tervalidasi tanpa membocorkan rahasia; definisikan model dan penyimpanan; tambahkan provider email baca-saja dengan OAuth; kemudian rancang AI opsional dengan perlindungan data. Setiap tindakan yang mengubah email harus nonaktif secara default, ditampilkan sebagai preview, mendapat persetujuan eksplisit pengguna, dan dicatat dalam audit log. Jangan mengaktifkan delete, move, send, atau unsubscribe otomatis.
-
-## Batasan
-
-Klasifikasi maupun petunjuk URL bukan pemeriksaan keamanan atau verifikasi lowongan. Periksa semua informasi secara mandiri sebelum bertindak. Kandidat pembersihan langganan hanyalah sinyal untuk ditinjau—demo tidak menghapus atau unsubscribe email.
-
-## Lisensi
-
-Repositori ini belum menetapkan lisensi. Tambahkan file lisensi sebelum menetapkan hak penggunaan dan distribusi proyek.
+MIT; lihat `LICENSE`. Pemilik/kontributor: [@harrisariefkamis](https://github.com/harrisariefkamis).

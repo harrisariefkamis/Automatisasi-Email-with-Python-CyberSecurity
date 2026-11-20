@@ -11,7 +11,7 @@ Untuk prototipe website, gunakan **Streamlit Community Cloud untuk UI**, **Supab
 - Consent AI terpisah; beri tahu pengguna bahwa email pilihan akan dikirim ke provider AI sebelum meminta persetujuan.
 - Jangan menganggap salah satu izin sebagai izin untuk yang lain.
 
-## Tahap A — deploy UI demo
+## Tahap A: deploy UI demo
 
 1. Push repo ke GitHub.
 2. Masuk ke Streamlit Community Cloud dan hubungkan GitHub.
@@ -27,7 +27,7 @@ SUPABASE_ANON_KEY = "your-public-anon-key"
 
 UI mendukung signup, login, reset password, tabs workspace, dan triase teks lokal. Jika secrets Supabase belum ada, tombol auth nonaktif. Panel Gmail dan AI masih nonaktif karena alur OAuth/token per pengguna belum dibuat.
 
-## Tahap B — Gmail OAuth terpisah
+## Tahap B: Gmail OAuth terpisah
 
 Sebelum mengaktifkan tombol “Hubungkan Gmail”:
 1. Buat OAuth client di Google Cloud Console dan daftarkan redirect URI yang persis.
@@ -37,7 +37,7 @@ Sebelum mengaktifkan tombol “Hubungkan Gmail”:
 5. Panggil `GmailReadOnlyClient` dengan kredensial dari sesi tepercaya. Batasi pesan/body dan jangan fetch attachment atau buka URL otomatis.
 6. Normalisasikan email ke `EmailMessage` dan sambungkan ke `triage_message()`.
 
-## Tahap C — Supabase Postgres/RLS
+## Tahap C: Supabase Postgres/RLS
 
 1. Jalankan `supabase/migrations/0001_emails.sql`.
 2. Gunakan JWT pengguna agar RLS menegakkan `auth.uid() = user_id`. Jangan gunakan service-role key pada request pengguna.
@@ -45,14 +45,14 @@ Sebelum mengaktifkan tombol “Hubungkan Gmail”:
 4. Uji isolasi RLS dengan dua user, termasuk percobaan memalsukan `user_id`.
 5. Tetapkan retention, penghapusan, backup dan incident response sebelum data nyata disimpan.
 
-## Tahap D — AI opsional
+## Tahap D: AI opsional
 
 1. Simpan `OPENAI_API_KEY` hanya di secrets platform server-side.
 2. Jelaskan provider, data yang dikirim, tujuan dan retensi; dapatkan consent AI khusus sebelum memanggil adapter.
 3. Minimalkan/redaksi PII, batasi input, validasi schema, timeout/kuota, dan fallback ke triase rule-based.
 4. Perlakukan body sebagai data tidak tepercaya. Model tidak boleh punya tools Gmail/database atau menjalankan tindakan.
 
-## Tahap E — tindakan email
+## Tahap E: tindakan email
 
 Untuk MVP, pertahankan read-only. Jangan aktifkan send/delete/move/label/unsubscribe. Tindakan masa depan memerlukan preview, konfirmasi per tindakan, otorisasi server, approval satu kali yang dipersistenkan, audit terlindungi, idempotency, batas batch, dan undo.
 
